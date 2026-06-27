@@ -118,16 +118,13 @@ class GPTLanguageModel(nn.Module):
         )
 
         self.ln_f = nn.LayerNorm(n_embd)
-
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
         self.apply(self._init_weights)
 
     def _init_weights(self, module):
-
         if isinstance(module, nn.Linear):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
 
@@ -139,15 +136,12 @@ class GPTLanguageModel(nn.Module):
         B, T = idx.shape
 
         tok_emb = self.token_embedding_table(idx)
-
         pos_emb = self.position_embedding_table(
             torch.arange(T, device=idx.device)
         )
 
         x = tok_emb + pos_emb
-
         x = self.blocks(x)
-
         x = self.ln_f(x)
 
         logits = self.lm_head(x)
@@ -165,7 +159,13 @@ class GPTLanguageModel(nn.Module):
         return logits, loss
 
     @torch.no_grad()
-    def generate(self, idx, max_new_tokens):
+    def generate(
+        self,
+        idx,
+        max_new_tokens,
+        temperature=1.0,
+        top_k=40,
+    ):
 
         for _ in range(max_new_tokens):
 
@@ -174,6 +174,12 @@ class GPTLanguageModel(nn.Module):
             logits, _ = self(idx_cond)
 
             logits = logits[:, -1, :]
+
+            logits = logits / temperature
+
+            if top_k is not None:
+                values, _ = torch.topk(logits, top_k)
+                logits[logits < values[:, [-1]]] = -float("Inf")
 
             probs = F.softmax(logits, dim=-1)
 
@@ -185,3 +191,37 @@ class GPTLanguageModel(nn.Module):
             idx = torch.cat((idx, idx_next), dim=1)
 
         return idx
+
+    @torch.no_grad()
+    def stream_generate(
+        self,
+        idx,
+        max_new_tokens,
+        temperature=0.8,
+        top_k=40,
+    ):
+
+        for _ in range(max_new_tokens):
+
+            idx_cond = idx[:, -block_size:]
+
+            logits, _ = self(idx_cond)
+
+            logits = logits[:, -1, :]
+
+            logits = logits / temperature
+
+            if top_k is not None:
+                values, _ = torch.topk(logits, top_k)
+                logits[logits < values[:, [-1]]] = -float("Inf")
+
+            probs = F.softmax(logits, dim=-1)
+
+            idx_next = torch.multinomial(
+                probs,
+                num_samples=1
+            )
+
+            idx = torch.cat((idx, idx_next), dim=1)
+
+            yield idx_next.item()
