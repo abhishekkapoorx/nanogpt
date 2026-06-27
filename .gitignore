@@ -1,2 +1,5 @@
 .env/
 dataset/
+
+# PyTorch Models
+model.pt
