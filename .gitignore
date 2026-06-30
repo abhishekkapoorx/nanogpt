@@ -3,3 +3,6 @@ dataset/
 
 # PyTorch Models
 model.pt
+
+# Python cache
+__pycache__/
